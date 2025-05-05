@@ -82,13 +82,17 @@ jobs:
       - name: Install Fastlane
         run: gem install fastlane
 
+      - name: Set Fastlane to Non-Interactive Mode
+        run: |
+          export FASTLANE_DISABLE_INTERACTIVE_MODE=1
+
       - name: Build iOS IPA
         working-directory: ios
         run: |
           if [[ "${{ env.ios_signing }}" == "true" ]]; then
-            fastlane build_signed
+            fastlane ios build_signed --fastfile ios/fastlane/Fastfile
           else
-            fastlane build_unsigned
+            fastlane ios build_unsigned --fastfile ios/fastlane/Fastfile
           fi
 
       # Upload APK and IPA to GitHub Release
