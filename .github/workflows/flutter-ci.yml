@@ -1,9 +1,11 @@
-name: Flutter CI/CD - Build and Upload Artifacts
+name: Flutter CI/CD - Build and Release
 
 on:
   push:
     branches:
       - master
+    # We will not rely on tags anymore
+    # Remove the 'tags' section from the push trigger.
 
 jobs:
   build:
@@ -74,21 +76,39 @@ jobs:
       - name: Build iOS IPA (unsigned)
         run: flutter build ipa --no-codesign
 
-      # Upload Artifacts to GitHub Actions run
-      - name: Upload APK
-        uses: actions/upload-artifact@v3
+      # Use the extracted version for the GitHub release
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: release-apk-${{ env.VERSION }}
-          path: build/app/outputs/flutter-apk/app-release.apk
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          files: build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
 
-      - name: Upload AAB
-        uses: actions/upload-artifact@v3
+      - name: Upload AAB to GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: release-aab-${{ env.VERSION }}
-          path: build/app/outputs/bundle/release/app-release.aab
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          files: build/app/outputs/bundle/release/app-release.aab
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
 
-      - name: Upload IPA
-        uses: actions/upload-artifact@v3
+      - name: Upload IPA to GitHub Release
+        uses: softprops/action-gh-release@v1
         with:
-          name: release-ipa-${{ env.VERSION }}
-          path: build/ios/ipa/*.ipa
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          files: build/ios/ipa/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body: "Automated release for version ${{ env.VERSION }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
