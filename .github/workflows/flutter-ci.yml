@@ -2,8 +2,10 @@ name: Flutter CI/CD - Build and Release
 
 on:
   push:
+    branches:
+      - master       # Trigger workflow on push to master
     tags:
-      - 'v*.*.*'  # Trigger release only for version tags like v1.0.0, v1.1.0, etc.
+      - 'v*.*.*'     # Also trigger workflow on version tag like v1.0.0
 
 jobs:
   build:
