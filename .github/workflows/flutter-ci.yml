@@ -1,0 +1,115 @@
+name: Flutter CI/CD - Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger release only for version tags like v1.0.0, v1.1.0, etc.
+
+jobs:
+  build:
+    runs-on: macos-latest  # Use macOS for iOS builds
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit tests
+        run: flutter test
+
+      # Android Build and Signing (Optional)
+      - name: Check if Android Keystore is available
+        id: android-keystore
+        run: |
+          if [[ -z "${{ secrets.ANDROID_KEYSTORE }}" ]]; then
+            echo "ANDROID_KEYSTORE is missing, proceeding with unsigned APK build"
+            echo "signing=false" >> $GITHUB_ENV
+          else
+            echo "ANDROID_KEYSTORE is present, proceeding with signed APK build"
+            echo "signing=true" >> $GITHUB_ENV
+          fi
+
+      - name: Decode Android Keystore (base64) if present
+        if: env.signing == 'true'
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/release-keystore.jks
+
+      - name: Configure Android signing if present
+        if: env.signing == 'true'
+        run: |
+          cat >> android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=release-keystore.jks
+          EOF
+
+      - name: Build Android APK
+        run: |
+          if [[ "${{ env.signing }}" == "true" ]]; then
+            flutter build apk --release
+          else
+            flutter build apk --release --no-sign
+          fi
+
+      # iOS Build and Signing (Optional)
+      - name: Check if iOS certificates are available
+        id: ios-certificates
+        run: |
+          if [[ -z "${{ secrets.IOS_P12_BASE64 }}" || -z "${{ secrets.IOS_PROFILE_BASE64 }}" ]]; then
+            echo "iOS certificates are missing, proceeding with unsigned IPA build"
+            echo "ios_signing=false" >> $GITHUB_ENV
+          else
+            echo "iOS certificates are present, proceeding with signed IPA build"
+            echo "ios_signing=true" >> $GITHUB_ENV
+          fi
+
+      - name: Decode iOS Certificates (base64) if present
+        if: env.ios_signing == 'true'
+        run: |
+          echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > ios_dist.p12
+          echo "${{ secrets.IOS_PROFILE_BASE64 }}" | base64 --decode > ios_profile.mobileprovision
+
+      - name: Install Fastlane
+        run: gem install fastlane
+
+      - name: Build iOS IPA
+        working-directory: ios
+        run: |
+          if [[ "${{ env.ios_signing }}" == "true" ]]; then
+            fastlane build_signed
+          else
+            fastlane build_unsigned
+          fi
+
+      # Upload APK and IPA to GitHub Release
+      - name: Upload APK to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/app/outputs/flutter-apk/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
+
+      - name: Upload IPA to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ios/build/ios/ipa/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
+
+      # Create GitHub Release
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: "Automated release for version ${{ github.ref_name }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
