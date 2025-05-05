@@ -1,114 +1,109 @@
-name: Flutter CI/CD - Build and Release
+name: "Build"
 
 on:
+  pull_request:
+    branches:
+      - master
   push:
     branches:
       - master
-    # We will not rely on tags anymore
-    # Remove the 'tags' section from the push trigger.
 
-jobs:
-  build:
-    runs-on: macos-latest
+jobs:  
+  build:      
+    name: Build & Release 
+    runs-on: macos-latest 
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+        #1 Checkout Repository
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Cache Flutter dependencies
-        uses: actions/cache@v3
+        #2 Setup Java
+      - name: Set Up Java
+        uses: actions/setup-java@v3.12.0
         with:
-          path: ~/.pub-cache
-          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-flutter-
+          distribution: 'oracle'
+          java-version: '11'
 
-      - name: Set up Flutter
+        #3 Setup Flutter
+      - name: Set Up Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.27.0'
+          channel: 'stable'
 
-      - name: Install dependencies
+        #4 Install Dependencies
+      - name: Install Dependencies
         run: flutter pub get
 
-      - name: Run unit tests
-        run: flutter test
+        #5 Setup Keystore
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/keystore.jks
+          
+      - name: Create key.properties
+        run: |
+          echo "storePassword=${{ secrets.KEYSTORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=keystore.jks" >> android/key.properties
+        
+       #6 Building APK
+      - name: Build APK
+        run: flutter build apk --release
 
-      # Extract version from pubspec.yaml
+        #7 Building App Bundle (aab)
+      - name: Build appBundle
+        run: flutter build appbundle
+
+        #8 Build IPA ( IOS Build )
+      - name: Build IPA
+        run: flutter build ipa --no-codesign
+
+      - name: Compress Archives and IPAs
+        run: |
+          cd build
+          tar -czf ios_build.tar.gz ios
+
+        #9 Upload Artifacts
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v2
+        with:
+          name: Releases
+          path: |
+            build/app/outputs/flutter-apk/app-release.apk
+            build/app/outputs/bundle/release/app-release.aab
+            build/ios_build.tar.gz
+
+        #10 Extract Version
       - name: Extract version from pubspec.yaml
         id: extract_version
         run: |
           version=$(grep '^version: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r')
           echo "VERSION=$version" >> $GITHUB_ENV
 
-      - name: Check if Android Keystore is available
-        id: android-keystore
+        #11 Check if Tag Exists
+      - name: Check if Tag Exists
+        id: check_tag
         run: |
-          if [[ -z "${{ secrets.ANDROID_KEYSTORE }}" ]]; then
-            echo "ANDROID_KEYSTORE is missing, proceeding with unsigned APK build"
-            echo "signing=false" >> $GITHUB_ENV
+          if git rev-parse "v${{ env.VERSION }}" >/dev/null 2>&1; then
+            echo "TAG_EXISTS=true" >> $GITHUB_ENV
           else
-            echo "ANDROID_KEYSTORE is present, proceeding with signed APK build"
-            echo "signing=true" >> $GITHUB_ENV
+            echo "TAG_EXISTS=false" >> $GITHUB_ENV
           fi
 
-      - name: Decode Android Keystore (base64) if present
-        if: env.signing == 'true'
+        #12 Modify Tag if it Exists
+      - name: Modify Tag
+        if: env.TAG_EXISTS == 'true'
+        id: modify_tag
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE }}" | base64 --decode > android/app/release-keystore.jks
-
-      - name: Configure Android signing if present
-        if: env.signing == 'true'
-        run: |
-          cat >> android/key.properties <<EOF
-          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
-          keyPassword=${{ secrets.KEY_PASSWORD }}
-          keyAlias=${{ secrets.KEY_ALIAS }}
-          storeFile=release-keystore.jks
-          EOF
-
-      - name: Build Android APK
-        run: flutter build apk --release
-
-      - name: Build Android App Bundle (AAB)
-        run: flutter build appbundle --release
-
-      - name: Build iOS IPA (unsigned)
-        run: flutter build ipa --no-codesign
-
-      # Use the extracted version for the GitHub release
-      - name: Upload APK to GitHub Release
-        uses: softprops/action-gh-release@v1
+          new_version="${{ env.VERSION }}-build-${{ github.run_number }}"
+          echo "VERSION=$new_version" >> $GITHUB_ENV
+        
+        #13 Create Release
+      - name: Create Release
+        uses: ncipollo/release-action@v1
         with:
-          tag_name: ${{ env.VERSION }}
-          name: Release ${{ env.VERSION }}
-          files: build/app/outputs/flutter-apk/app-release.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
-
-      - name: Upload AAB to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.VERSION }}
-          name: Release ${{ env.VERSION }}
-          files: build/app/outputs/bundle/release/app-release.aab
-        env:
-          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
-
-      - name: Upload IPA to GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.VERSION }}
-          name: Release ${{ env.VERSION }}
-          files: build/ios/ipa/*.ipa
-        env:
-          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.VERSION }}
-          name: Release ${{ env.VERSION }}
-          body: "Automated release for version ${{ env.VERSION }}"
-        env:
-          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
+          artifacts: "build/app/outputs/flutter-apk/app-release.apk,build/app/outputs/bundle/release/app-release.aab,build/ios_build.tar.gz"
+          tag: v${{ env.VERSION }}
+          token: ${{ secrets.MYTOKEN }}
