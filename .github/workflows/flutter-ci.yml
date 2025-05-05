@@ -3,19 +3,18 @@ name: Flutter CI/CD - Build and Release
 on:
   push:
     branches:
-      - master       # Trigger workflow on push to master
+      - master
     tags:
-      - 'v*.*.*'     # Also trigger workflow on version tag like v1.0.0
+      - 'v*.*.*'
 
 jobs:
   build:
-    runs-on: macos-latest  # Use macOS for iOS builds
+    runs-on: macos-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # Cache Flutter dependencies
       - name: Cache Flutter dependencies
         uses: actions/cache@v3
         with:
@@ -35,7 +34,6 @@ jobs:
       - name: Run unit tests
         run: flutter test
 
-      # Android Build and Signing (Optional)
       - name: Check if Android Keystore is available
         id: android-keystore
         run: |
@@ -63,60 +61,14 @@ jobs:
           EOF
 
       - name: Build Android APK
-        run: |
-          if [[ "${{ env.signing }}" == "true" ]]; then
-            flutter build apk --release
-          else
-            flutter build apk --release
-          fi
+        run: flutter build apk --release
 
-      # iOS Build and Signing (Optional)
-      - name: Check if iOS certificates are available
-        id: ios-certificates
-        run: |
-          if [[ -z "${{ secrets.IOS_P12_BASE64 }}" || -z "${{ secrets.IOS_PROFILE_BASE64 }}" ]]; then
-            echo "iOS certificates are missing, proceeding with unsigned IPA build"
-            echo "ios_signing=false" >> $GITHUB_ENV
-          else
-            echo "iOS certificates are present, proceeding with signed IPA build"
-            echo "ios_signing=true" >> $GITHUB_ENV
-          fi
+      - name: Build Android App Bundle (AAB)
+        run: flutter build appbundle --release
 
-      - name: Decode iOS Certificates (base64) if present
-        if: env.ios_signing == 'true'
-        run: |
-          echo "${{ secrets.IOS_P12_BASE64 }}" | base64 --decode > ios_dist.p12
-          echo "${{ secrets.IOS_PROFILE_BASE64 }}" | base64 --decode > ios_profile.mobileprovision
+      - name: Build iOS IPA (unsigned)
+        run: flutter build ipa --no-codesign
 
-      - name: Install Fastlane
-        run: gem install fastlane
-
-      # Cache Ruby gems
-      - name: Cache Ruby gems
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.bundle
-            ~/.fastlane
-            /usr/local/lib/ruby/gems
-          key: ${{ runner.os }}-ruby-${{ hashFiles('**/Gemfile.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-ruby-
-
-      - name: Set Fastlane to Non-Interactive Mode
-        run: |
-          export FASTLANE_DISABLE_INTERACTIVE_MODE=1
-
-      - name: Build iOS IPA
-        working-directory: ios
-        run: |
-          if [[ "${{ env.ios_signing }}" == "true" ]]; then
-            fastlane build_signed  # No --fastfile needed, it will look for Fastfile in ios/fastlane/
-          else
-            fastlane build_unsigned  # No --fastfile needed, it will look for Fastfile in ios/fastlane/
-          fi
-
-      # Upload APK and IPA to GitHub Release
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
@@ -124,14 +76,20 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
 
-      - name: Upload IPA to GitHub Release
+      - name: Upload AAB to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          files: ios/build/ios/ipa/*.ipa
+          files: build/app/outputs/bundle/release/app-release.aab
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
 
-      # Create GitHub Release
+      - name: Upload IPA to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: build/ios/ipa/*.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
