@@ -4,8 +4,8 @@ on:
   push:
     branches:
       - master
-    tags:
-      - 'v*.*.*'
+    # We will not rely on tags anymore
+    # Remove the 'tags' section from the push trigger.
 
 jobs:
   build:
@@ -33,6 +33,13 @@ jobs:
 
       - name: Run unit tests
         run: flutter test
+
+      # Extract version from pubspec.yaml
+      - name: Extract version from pubspec.yaml
+        id: extract_version
+        run: |
+          version=$(grep '^version: ' pubspec.yaml | cut -d ' ' -f 2 | tr -d '\r')
+          echo "VERSION=$version" >> $GITHUB_ENV
 
       - name: Check if Android Keystore is available
         id: android-keystore
@@ -69,11 +76,12 @@ jobs:
       - name: Build iOS IPA (unsigned)
         run: flutter build ipa --no-codesign
 
+      # Use the extracted version for the GitHub release
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
@@ -81,8 +89,8 @@ jobs:
       - name: Upload AAB to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
           files: build/app/outputs/bundle/release/app-release.aab
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
@@ -90,8 +98,8 @@ jobs:
       - name: Upload IPA to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
           files: build/ios/ipa/*.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
@@ -99,8 +107,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ github.ref }}
-          name: Release ${{ github.ref }}
-          body: "Automated release for version ${{ github.ref }}"
+          tag_name: ${{ env.VERSION }}
+          name: Release ${{ env.VERSION }}
+          body: "Automated release for version ${{ env.VERSION }}"
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
