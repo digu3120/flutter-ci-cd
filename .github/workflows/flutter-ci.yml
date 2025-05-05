@@ -15,6 +15,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # Cache Flutter dependencies
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.pub-cache
+          key: ${{ runner.os }}-flutter-${{ hashFiles('**/pubspec.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -82,6 +91,18 @@ jobs:
       - name: Install Fastlane
         run: gem install fastlane
 
+      # Cache Ruby gems
+      - name: Cache Ruby gems
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.bundle
+            ~/.fastlane
+            /usr/local/lib/ruby/gems
+          key: ${{ runner.os }}-ruby-${{ hashFiles('**/Gemfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-ruby-
+
       - name: Set Fastlane to Non-Interactive Mode
         run: |
           export FASTLANE_DISABLE_INTERACTIVE_MODE=1
@@ -90,9 +111,9 @@ jobs:
         working-directory: ios
         run: |
           if [[ "${{ env.ios_signing }}" == "true" ]]; then
-            fastlane ios build_signed --fastfile ios/fastlane/Fastfile
+            fastlane build_signed  # No --fastfile needed, it will look for Fastfile in ios/fastlane/
           else
-            fastlane ios build_unsigned --fastfile ios/fastlane/Fastfile
+            fastlane build_unsigned  # No --fastfile needed, it will look for Fastfile in ios/fastlane/
           fi
 
       # Upload APK and IPA to GitHub Release
