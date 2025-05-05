@@ -69,38 +69,11 @@ jobs:
       - name: Build iOS IPA (unsigned)
         run: flutter build ipa --no-codesign
 
-      - name: Generate new version tag
-        id: tagger
-        run: |
-          git fetch --tags
-          LATEST_TAG=$(git tag --sort=-v:refname | head -n 1)
-          echo "Latest tag: $LATEST_TAG"
-
-          if [[ "$LATEST_TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            MAJOR=${BASH_REMATCH[1]}
-            MINOR=${BASH_REMATCH[2]}
-            PATCH=${BASH_REMATCH[3]}
-            PATCH=$((PATCH + 1))
-          else
-            MAJOR=1
-            MINOR=0
-            PATCH=0
-          fi
-
-          NEW_TAG="v$MAJOR.$MINOR.$PATCH"
-          echo "New tag: $NEW_TAG"
-          echo "tag_name=$NEW_TAG" >> $GITHUB_OUTPUT
-
-          git config user.name "github-actions"
-          git config user.email "github-actions@github.com"
-          git tag $NEW_TAG
-          git push https://x-access-token:${{ secrets.MYTOKEN }}@github.com/${{ github.repository }} --tags
-
       - name: Upload APK to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tagger.outputs.tag_name }}
-          name: Release ${{ steps.tagger.outputs.tag_name }}
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref }}
           files: build/app/outputs/flutter-apk/app-release.apk
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
@@ -108,8 +81,8 @@ jobs:
       - name: Upload AAB to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tagger.outputs.tag_name }}
-          name: Release ${{ steps.tagger.outputs.tag_name }}
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref }}
           files: build/app/outputs/bundle/release/app-release.aab
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
@@ -117,8 +90,8 @@ jobs:
       - name: Upload IPA to GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tagger.outputs.tag_name }}
-          name: Release ${{ steps.tagger.outputs.tag_name }}
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref }}
           files: build/ios/ipa/*.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
@@ -126,8 +99,8 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.tagger.outputs.tag_name }}
-          name: Release ${{ steps.tagger.outputs.tag_name }}
-          body: "Automated release for version ${{ steps.tagger.outputs.tag_name }}"
+          tag_name: ${{ github.ref }}
+          name: Release ${{ github.ref }}
+          body: "Automated release for version ${{ github.ref }}"
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
