@@ -112,3 +112,4 @@ jobs:
           body: "Automated release for version ${{ env.VERSION }}"
         env:
           GITHUB_TOKEN: ${{ secrets.MYTOKEN }}
+
